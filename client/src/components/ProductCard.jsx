@@ -1,4 +1,5 @@
 
+import { useState } from "react";
 import { assets } from "../assets/assets";
 import { useAppContext } from "../context/AppContext";
 
@@ -6,9 +7,9 @@ const ProductCard = ({ product }) => {
   const { addToCart, removeFromCart, cartItems, navigate } =
     useAppContext();
 
-  if (!product) return null;
+  const [imageError, setImageError] = useState(false);
 
-  const backendUrl = import.meta.env.VITE_BACKEND_URL;
+  if (!product) return null;
 
   const handleProductClick = () => {
     navigate(
@@ -17,6 +18,8 @@ const ProductCard = ({ product }) => {
     window.scrollTo(0, 0);
   };
 
+  const productImage = product.image?.[0];
+
   return (
     <div
       onClick={handleProductClick}
@@ -24,12 +27,25 @@ const ProductCard = ({ product }) => {
     >
       {/* Product image */}
       <div className="group flex w-full h-32 sm:h-40 md:h-44 items-center justify-center overflow-hidden">
-        <img
-          className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
-          src={`${backendUrl}/images/${product.image?.[0]}`}
-          alt={product.name}
-          loading="lazy"
-        />
+        {productImage && !imageError ? (
+          <img
+            className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+            src={productImage}
+            alt={product.name || "Product"}
+            loading="lazy"
+            onError={() => {
+              setImageError(true);
+              console.error(
+                "Product image failed to load:",
+                productImage
+              );
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center w-full h-full bg-gray-50 text-gray-400 text-sm">
+            Image unavailable
+          </div>
+        )}
       </div>
 
       {/* Product details */}
@@ -58,6 +74,7 @@ const ProductCard = ({ product }) => {
                 className="w-3 sm:w-3.5"
               />
             ))}
+
           <span className="ml-1 text-xs">(4)</span>
         </div>
 
