@@ -11,16 +11,16 @@ export const sellerLogin = async (req, res) => {
       password !== process.env.SELLER_PASSWORD
     ) {
       return res.status(400).json({
-        message: "Invalid credentials",
         success: false,
+        message: "Invalid credentials",
       });
     }
 
     if (!process.env.JWT_SECRET) {
       console.error("JWT_SECRET is not configured");
       return res.status(500).json({
-        message: "Server configuration error",
         success: false,
+        message: "Server configuration error",
       });
     }
 
@@ -30,21 +30,45 @@ export const sellerLogin = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    return res.status(200).cookie("sellerToken", token, {
+    return res
+      .cookie("sellerToken", token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      })
+      .status(200)
+      .json({
+        success: true,
+        message: "Login successful",
+      });
+  } catch (error) {
+    console.error("Error in sellerLogin:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Check seller authentication: /api/seller/is-auth
+export const checkAuth = (req, res) => {
+  return res.status(200).json({ success: true });
+};
+
+// Seller logout: /api/seller/logout
+export const sellerLogout = (req, res) => {
+  return res
+    .clearCookie("sellerToken", {
       httpOnly: true,
       secure: true,
       sameSite: "none",
       path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    }).json({
-      message: "Login successful",
+    })
+    .status(200)
+    .json({
       success: true,
+      message: "Logged out successfully",
     });
-  } catch (error) {
-    console.error("Error in sellerLogin:", error);
-    return res.status(500).json({
-      message: "Internal server error",
-      success: false,
-    });
-  }
 };
