@@ -1,18 +1,50 @@
+
 import jwt from "jsonwebtoken";
-export const authSeller = async (req, res, next) => {
-  const { sellerToken } = req.cookies;
-  if (!sellerToken) {
-    return res.status(401).json({ message: "Unauthorized", success: false });
-  }
+
+export const authSeller = (req, res, next) => {
   try {
-    const decoded = jwt.verify(sellerToken, process.env.JWT_SECRET);
-    if (decoded.email === process.env.SELLER_EMAIL) {
-      return next();
-    } else {
-      return res.status(403).json({ message: "Forbidden", success: false });
+    const sellerToken = req.cookies?.sellerToken;
+
+    if (!sellerToken) {
+      return res.status(401).json({
+        success: false,
+        message: "Seller session not found. Please log in again.",
+      });
     }
+
+    if (!process.env.JWT_SECRET || !process.env.SELLER_EMAIL) {
+      console.error(
+        "Missing JWT_SECRET or SELLER_EMAIL in backend environment variables."
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: "Seller authentication is not configured on the server.",
+      });
+    }
+
+    const decoded = jwt.verify(
+      sellerToken,
+      process.env.JWT_SECRET
+    );
+
+    if (
+      !decoded.email ||
+      decoded.email !== process.env.SELLER_EMAIL
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have seller permissions.",
+      });
+    }
+
+    return next();
   } catch (error) {
-    console.error("Error in authSeller middleware:", error);
-    return res.status(401).json({ message: "Invalid token", success: false });
+    console.error("Seller authentication error:", error.message);
+
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired seller session. Please log in again.",
+    });
   }
 };
