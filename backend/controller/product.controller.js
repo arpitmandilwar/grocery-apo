@@ -3,8 +3,8 @@ import Product from "../models/product.model.js";
 import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
 
-const uploadToCloudinary = (file) => {
-  return new Promise((resolve, reject) => {
+const uploadToCloudinary = (file) =>
+  new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       { folder: "grocery-products", resource_type: "image" },
       (error, result) => {
@@ -15,7 +15,6 @@ const uploadToCloudinary = (file) => {
 
     streamifier.createReadStream(file.buffer).pipe(stream);
   });
-};
 
 // Add product: /api/product/add-product
 export const addProduct = async (req, res) => {
@@ -34,15 +33,6 @@ export const addProduct = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "All fields including images are required",
-      });
-    }
-
-    if (!process.env.CLOUDINARY_CLOUD_NAME ||
-        !process.env.CLOUDINARY_API_KEY ||
-        !process.env.CLOUDINARY_API_SECRET) {
-      return res.status(500).json({
-        success: false,
-        message: "Cloudinary is not configured on the server",
       });
     }
 
@@ -100,6 +90,7 @@ export const getProductById = async (req, res) => {
 
     return res.status(200).json({ success: true, product });
   } catch (error) {
+    console.error("Error in getProductById:", error);
     return res.status(500).json({
       success: false,
       message: "Server error",
@@ -111,6 +102,7 @@ export const getProductById = async (req, res) => {
 export const changeStock = async (req, res) => {
   try {
     const { id, inStock } = req.body;
+
     const product = await Product.findByIdAndUpdate(
       id,
       { inStock },
@@ -131,6 +123,9 @@ export const changeStock = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in changeStock:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
