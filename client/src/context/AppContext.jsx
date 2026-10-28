@@ -1,13 +1,41 @@
-import { createContext, useContext, useEffect, useState } from "react";
+
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import axios from "axios";
-axios.defaults.withCredentials = true;
-axios.defaults.baseURL = import.meta.env.VITE_BACKEND_URL;
+
 export const AppContext = createContext(null);
+
+// Configure the backend URL for local development and Vercel.
+const backendURL = import.meta.env.VITE_BACKEND_URL?.replace(/\/+$/, "");
+
+axios.defaults.baseURL = backendURL;
+axios.defaults.withCredentials = true;
+
+const getErrorMessage = (error) => {
+  if (error.response) {
+    return (
+      error.response.data?.message ||
+      `Server error: ${error.response.status}`
+    );
+  }
+
+  if (error.request) {
+    return "Network error. Please check your connection and try again.";
+  }
+
+  return error.message || "Something went wrong.";
+};
 
 export const AppContextProvider = ({ children }) => {
   const navigate = useNavigate();
+
   const [user, setUser] = useState(null);
   const [isSeller, setIsSeller] = useState(false);
   const [showUserLogin, setShowUserLogin] = useState(false);
@@ -15,127 +43,161 @@ export const AppContextProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
 
-  // check seller status
-  const fetchSeller = async () => {
+  // Check seller authentication.
+  const fetchSeller = useCallback(async () => {
     try {
       const { data } = await axios.get("/api/seller/is-auth");
-      if (data.success) {
-        setIsSeller(true);
-      } else {
-        setIsSeller(false);
-      }
-    // eslint-disable-next-line no-unused-vars
+      setIsSeller(Boolean(data.success));
     } catch (error) {
+      console.error("Seller authentication error:", error);
       setIsSeller(false);
     }
-  };
+  }, []);
 
-  // fetch user auth status ,user Data and cart items
-  const fetchUser = async () => {
+  // Fetch user authentication and cart.
+  const fetchUser = useCallback(async () => {
     try {
       const { data } = await axios.get("/api/user/is-auth");
+
       if (data.success) {
         setUser(data.user);
-        setCartItems(data.user.cart);
+        setCartItems(data.user?.cart || {});
       } else {
-        toast.error(data.message);
+        setUser(null);
+        setCartItems({});
       }
     } catch (error) {
-      toast.error(error.message);
+      console.error("User authentication error:", error);
+      setUser(null);
+      setCartItems({});
     }
-  };
+  }, []);
 
-  // fetch products
-  const fetchProducts = async () => {
+  // Fetch products from the deployed backend.
+  const fetchProducts = useCallback(async () => {
+    if (!backendURL) {
+      console.error(
+        "VITE_BACKEND_URL is missing. Configure it in Vercel."
+      );
+      toast.error("Backend URL is not configured.");
+      return;
+    }
+
     try {
       const { data } = await axios.get("/api/product/list");
+
       if (data.success) {
-        setProducts(data.products);
+        setProducts(data.products || []);
       } else {
-        toast.error(data.message);
+        console.error("Product API returned an error:", data);
+        toast.error(data.message || "Unable to load products.");
       }
     } catch (error) {
-      toast.error(error.message);
+      console.error("Fetch products error:", error);
+      toast.error(getErrorMessage(error));
     }
-  };
-  // add product to cart
+  }, []);
+
+  // Add product to cart.
   const addToCart = (itemId) => {
-    let cartData = structuredClone(cartItems || {}); // safeguard for undefined
+    setCartItems((previous) => {
+      const updated = { ...previous };
+      updated[itemId] = (updated[itemId] || 0) + 1;
+      return updated;
+    });
 
-    if (cartData[itemId]) {
-      cartData[itemId] += 1;
-    } else {
-      cartData[itemId] = 1;
-    }
-
-    setCartItems(cartData);
     toast.success("Added to cart");
   };
 
-  // update cart item quantity
+  // Update cart quantity.
   const updateCartItem = (itemId, quantity) => {
-    let cartData = structuredClone(cartItems);
-    cartData[itemId] = quantity;
-    setCartItems(cartData);
-    toast.success(`cart updated`);
+    const safeQuantity = Math.max(0, Number(quantity) || 0);
+
+    setCartItems((previous) => {
+      const updated = { ...previous };
+
+      if (safeQuantity === 0) {
+        delete updated[itemId];
+      } else {
+        updated[itemId] = safeQuantity;
+      }
+
+      return updated;
+    });
+
+    toast.success("Cart updated");
   };
 
-  // total cart items
-  const cartCount = () => {
-    let totalCount = 0;
-    for (const item in cartItems) {
-      totalCount += cartItems[item];
-    }
-    return totalCount;
-  };
-  // total cart amount
-  const totalCartAmount = () => {
-    let totalAmount = 0;
-    for (const items in cartItems) {
-      let itemInfo = products.find((product) => product._id === items);
-      if (cartItems[items] > 0) {
-        totalAmount += cartItems[items] * itemInfo.offerPrice;
-      }
-    }
-    return Math.floor(totalAmount * 100) / 100;
-  };
-  // remove product from cart
+  // Remove one quantity of a product.
   const removeFromCart = (itemId) => {
-    let cartData = structuredClone(cartItems);
-    if (cartData[itemId]) {
-      cartData[itemId] -= 1;
-      if (cartData[itemId] === 0) {
-        delete cartData[itemId];
+    setCartItems((previous) => {
+      const updated = { ...previous };
+
+      if (updated[itemId]) {
+        updated[itemId] -= 1;
+
+        if (updated[itemId] <= 0) {
+          delete updated[itemId];
+        }
       }
-      toast.success(`remove from cart`);
-      setCartItems(cartData);
-    }
+
+      return updated;
+    });
   };
+
+  // Count total cart items.
+  const cartCount = () => {
+    return Object.values(cartItems).reduce(
+      (total, quantity) => total + (Number(quantity) || 0),
+      0
+    );
+  };
+
+  // Calculate total cart amount safely.
+  const totalCartAmount = () => {
+    return Math.floor(
+      Object.entries(cartItems).reduce((total, [itemId, quantity]) => {
+        const product = products.find((item) => item._id === itemId);
+
+        if (product && quantity > 0) {
+          return total + quantity * (Number(product.offerPrice) || 0);
+        }
+
+        return total;
+      }, 0) * 100
+    ) / 100;
+  };
+
+  // Load initial data.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSeller();
     fetchProducts();
     fetchUser();
-  }, []);
+  }, [fetchSeller, fetchProducts, fetchUser]);
 
-  // update database cart items
+  // Sync cart with backend when the user is authenticated.
   useEffect(() => {
+    if (!user) return;
+
     const updateCart = async () => {
       try {
-        const { data } = await axios.post("/api/cart/update", { cartItems });
+        const { data } = await axios.post("/api/cart/update", {
+          cartItems,
+        });
 
         if (!data.success) {
-          toast.error(data.message);
+          console.error("Cart update failed:", data);
+          toast.error(data.message || "Unable to update cart.");
         }
       } catch (error) {
-        toast.error(error.message);
+        console.error("Cart update error:", error);
+        toast.error(getErrorMessage(error));
       }
     };
 
-    if (user) {
-      updateCart();
-    }
-  }, [cartItems]);
+    updateCart();
+  }, [cartItems, user]);
+
   const value = {
     navigate,
     user,
@@ -157,7 +219,12 @@ export const AppContextProvider = ({ children }) => {
     fetchProducts,
     setCartItems,
   };
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+
+  return (
+    <AppContext.Provider value={value}>
+      {children}
+    </AppContext.Provider>
+  );
 };
 
 export const useAppContext = () => {
